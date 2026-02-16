@@ -1,18 +1,11 @@
+# db_config.py
 import os
-from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
-
-# Database configuration for Clever-Cloud MySQL
 db_config = {
-    'host': os.getenv('DB_HOST', 'bmqdodlsvrs4eiohpyuj-mysql.services.clever-cloud.com'),
-    'database': os.getenv('DB_NAME', 'bmqdodlsvrs4eiohpyuj'),
-    'user': os.getenv('DB_USER', 'u3n1wy3bh5dbph7h'),
-    'password': os.getenv('DB_PASS', '7hsxNRqBlgV9IalgyIgw'),
-    'port': int(os.getenv('DB_PORT', 3306)),
-    'connection_timeout': 30,
-    'use_pure': True
+    "host": os.getenv("DB_HOST", "mysql-3f297111-appasm321-e8a6.k.aivencloud.com"),
+    "user": os.getenv("DB_USER", "avnadmin"),
+    "password": os.getenv("DB_PASSWORD", "AVNS_FLKQh4Rgnsk6jfp1fxG"),
+    "database": os.getenv("DB_NAME", "defaultdb"),
+    "port": int(os.getenv("DB_PORT", 15298)),
+    "ssl_ca": "/path/to/ca.pem",  # Aiven provides a CA certificate file
 }
-
-print(f"✅ Database config loaded for {db_config['host']}")
