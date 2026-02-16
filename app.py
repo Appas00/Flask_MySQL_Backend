@@ -8,10 +8,13 @@ app = Flask(__name__)
 # -------------------------------
 # ✅ ENABLE CORS FOR YOUR GITHUB
 # -------------------------------
+# In app.py, update CORS to allow your GitHub Pages domain
 CORS(app, origins=[
     "https://appas00.github.io",
-    "https://appas00.github.io/portfolio"
-])
+    "https://appas00.github.io/portfolio",
+    "http://localhost:3000",  # For local development
+    "http://127.0.0.1:3000"
+], supports_credentials=True)
 
 
 # -------------------------------
