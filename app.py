@@ -18,18 +18,22 @@ load_dotenv()
 # -----------------------------
 # Configure logging
 # -----------------------------
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 # -----------------------------
-# Database configuration for Clever-Cloud
+# Database configuration - Support both Railway and Clever-Cloud
 # -----------------------------
+# Railway provides MySQL variables with different names
 db_config = {
-    'host': os.getenv('DB_HOST', 'bmqdodlsvrs4eiohpyuj-mysql.services.clever-cloud.com'),
-    'database': os.getenv('DB_NAME', 'bmqdodlsvrs4eiohpyuj'),
-    'user': os.getenv('DB_USER', 'u3n1wy3bh5dbph7h'),
-    'password': os.getenv('DB_PASS', '7hsxNRqBlgV9IalgyIgw'),
-    'port': int(os.getenv('DB_PORT', 3306)),
+    'host': os.getenv('DB_HOST') or os.getenv('MYSQLHOST') or 'bmqdodlsvrs4eiohpyuj-mysql.services.clever-cloud.com',
+    'database': os.getenv('DB_NAME') or os.getenv('MYSQLDATABASE') or 'bmqdodlsvrs4eiohpyuj',
+    'user': os.getenv('DB_USER') or os.getenv('MYSQLUSER') or 'u3n1wy3bh5dbph7h',
+    'password': os.getenv('DB_PASS') or os.getenv('MYSQLPASSWORD') or '7hsxNRqBlgV9IalgyIgw',
+    'port': int(os.getenv('DB_PORT') or os.getenv('MYSQLPORT') or 3306),
     'connection_timeout': 30,
     'use_pure': True
 }
@@ -46,38 +50,52 @@ GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "byuabzoldtygwznm")
 app = Flask(__name__)
 
 # -----------------------------
-# CORS configuration
+# Comprehensive CORS configuration
 # -----------------------------
-CORS(app, origins=[
-    "https://appas00.github.io",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000"
-])
+CORS(app, resources={
+    r"/*": {
+        "origins": [
+            "https://appas00.github.io",
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "https://flask-mysql-backend.up.railway.app"
+        ],
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Accept"],
+        "supports_credentials": True
+    }
+})
 
 @app.after_request
 def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', 'https://appas00.github.io')
     response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Accept')
     response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+    response.headers.add('Access-Control-Allow-Credentials', 'true')
     return response
 
 # -----------------------------
-# Database connection helper
+# Database connection helper with better error handling
 # -----------------------------
 def get_db_connection():
     """Get database connection with retry logic"""
     retries = 3
+    last_error = None
+    
     for i in range(retries):
         try:
-            logger.info(f"Connecting to Clever-Cloud MySQL ({i+1}/{retries})...")
+            logger.info(f"Connecting to MySQL ({i+1}/{retries}) - Host: {db_config['host']}, DB: {db_config['database']}")
             conn = mysql.connector.connect(**db_config)
             if conn.is_connected():
-                logger.info("✅ Connected to Clever-Cloud MySQL successfully!")
+                logger.info("✅ Connected to MySQL successfully!")
                 return conn
         except Error as e:
+            last_error = e
             logger.error(f"❌ Connection attempt {i+1} failed: {str(e)}")
-            if i == retries - 1:
-                raise e
-            time.sleep(2)
+            if i < retries - 1:
+                time.sleep(2)
+    
+    logger.error(f"❌ All connection attempts failed: {last_error}")
     return None
 
 # -----------------------------
@@ -109,7 +127,7 @@ def init_database():
                 count = cursor.fetchone()[0]
                 logger.info(f"📊 Total records in contacts table: {count}")
             else:
-                logger.error("❌ Contacts table does not exist!")
+                logger.warning("❌ Contacts table does not exist, creating...")
                 # Create the table if it doesn't exist
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS contacts (
@@ -126,8 +144,10 @@ def init_database():
             
             cursor.close()
             conn.close()
+            return True
     except Exception as e:
         logger.error(f"❌ Database initialization failed: {str(e)}")
+        return False
 
 # -----------------------------
 # Routes
@@ -136,8 +156,9 @@ def init_database():
 def home():
     return jsonify({
         "status": "ok",
-        "message": "Backend is running on Railway with Clever-Cloud MySQL!",
-        "timestamp": datetime.now().isoformat()
+        "message": "Backend is running on Railway with MySQL!",
+        "timestamp": datetime.now().isoformat(),
+        "database": db_config['host']
     })
 
 @app.get("/health")
@@ -162,6 +183,7 @@ def health_check():
     except Exception as e:
         db_status = "error"
         db_message = str(e)
+        logger.error(f"Health check error: {str(e)}")
     
     return jsonify({
         "status": "ok",
@@ -213,7 +235,7 @@ def test_db():
         
         return jsonify({
             "status": "success",
-            "message": "✅ Connected to Clever-Cloud MySQL",
+            "message": "✅ Connected to MySQL",
             "database_info": {
                 "host": db_config['host'],
                 "database": db_config['database'],
@@ -238,6 +260,7 @@ def contact():
     try:
         data = request.get_json()
         if not data:
+            logger.error("No JSON data received")
             return jsonify({
                 "status": "error",
                 "message": "No data provided"
@@ -251,20 +274,24 @@ def contact():
         phone = data.get("phone", "").strip()
         message_body = data.get("message", "").strip()
 
-        if not name or not email or not message_body:
-            return jsonify({
-                "status": "error",
-                "message": "Name, Email, and Message are required"
-            }), 400
+        if not name:
+            return jsonify({"status": "error", "message": "Name is required"}), 400
+        if not email:
+            return jsonify({"status": "error", "message": "Email is required"}), 400
+        if "@" not in email or "." not in email:
+            return jsonify({"status": "error", "message": "Valid email is required"}), 400
+        if not message_body:
+            return jsonify({"status": "error", "message": "Message is required"}), 400
 
         # Save to database
+        insert_id = None
         try:
             conn = get_db_connection()
             if not conn:
                 return jsonify({
                     "status": "error",
-                    "message": "Database connection failed"
-                }), 500
+                    "message": "Database connection failed - please try again later"
+                }), 503
 
             cursor = conn.cursor()
 
@@ -285,10 +312,10 @@ def contact():
             logger.error(f"MySQL Error: {str(e)}")
             return jsonify({
                 "status": "error",
-                "message": f"Database error: {str(e)}"
+                "message": "Database error occurred. Please try again."
             }), 500
 
-        # Send email notification
+        # Send email notification (optional - don't fail if email doesn't work)
         email_sent = False
         if GMAIL_USERNAME and GMAIL_APP_PASSWORD:
             try:
@@ -314,9 +341,9 @@ def contact():
                 
                 email_sent = True
                 logger.info(f"✅ Email notification sent")
-
             except Exception as e:
                 logger.error(f"Email Error: {str(e)}")
+                # Don't fail the request if email fails
 
         return jsonify({
             "status": "success",
@@ -334,7 +361,7 @@ def contact():
         logger.error(f"Server Error: {str(e)}")
         return jsonify({
             "status": "error",
-            "message": f"Server error: {str(e)}"
+            "message": "An unexpected error occurred. Please try again."
         }), 500
 
 @app.route('/contact', methods=['OPTIONS'])
@@ -346,10 +373,11 @@ def handle_options():
 # -----------------------------
 with app.app_context():
     init_database()
+    logger.info("✅ Application started successfully")
 
 # -----------------------------
 # Run the app
 # -----------------------------
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(host="0.0.0.0", port=port, debug=False)
