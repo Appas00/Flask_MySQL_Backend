@@ -2,122 +2,82 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import mysql.connector
 from mysql.connector import Error
-import smtplib
-from email.message import EmailMessage
-from dotenv import load_dotenv
-import os
-
-# Load .env locally (Railway auto injects env vars)
-load_dotenv()
-
-# Import DB config
-from db_config import db_config
 
 app = Flask(__name__)
 
-# Allow GitHub Pages frontend
-CORS(app, resources={
-    r"*": {
-        "origins": [
-            "https://appas00.github.io",
-            "https://appas00.github.io/portfolio"
-        ]
-    }
-})
+# -------------------------------
+# ✅ ENABLE CORS FOR YOUR GITHUB
+# -------------------------------
+CORS(app, origins=[
+    "https://appas00.github.io",
+    "https://appas00.github.io/portfolio"
+])
 
 
-# Gmail credentials (stored in Railway variables)
-GMAIL_USERNAME = os.getenv("GMAIL_USERNAME")
-GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
-
-
-# --------------------------------------------------------
-# Root Route
-# --------------------------------------------------------
-@app.get("/")
-def home():
-    return jsonify({
-        "status": "ok",
-        "message": "Backend Running on Railway!"
-    })
-
-
-# --------------------------------------------------------
-# Contact Route
-# --------------------------------------------------------
-@app.post("/contact")
-def contact():
+# -------------------------------
+# ✅ DATABASE CONFIG (Railway)
+# -------------------------------
+def get_db_connection():
     try:
-        data = request.json or {}
+        return mysql.connector.connect(
+            host="YOUR_RAILWAY_HOST",
+            user="YOUR_RAILWAY_USER",
+            password="YOUR_RAILWAY_PASSWORD",
+            database="YOUR_RAILWAY_DATABASE",
+            port=3306
+        )
+    except Error as e:
+        print("❌ Database connection failed:", e)
+        return None
 
-        name = data.get("name")
-        email = data.get("email")
-        phone = data.get("phone")
-        message_body = data.get("message")
 
-        # Validate
-        if not name or not email or not message_body:
-            return jsonify({
-                "status": "error",
-                "message": "Name, Email, and Message are required"
-            }), 400
+# -------------------------------
+# ✅ CONTACT ROUTE
+# -------------------------------
+@app.route("/contact", methods=["POST"])
+def contact():
+    data = request.get_json()
 
-        # --------------------------------------------------------
-        # SAVE TO MYSQL
-        # --------------------------------------------------------
-        try:
-            conn = mysql.connector.connect(**db_config)
-            cursor = conn.cursor()
+    name = data.get("name")
+    email = data.get("email")
+    message = data.get("message")
+    phone = data.get("phone", "")
 
-            cursor.execute("""
-                INSERT INTO contacts (name, email, phone, message)
-                VALUES (%s, %s, %s, %s)
-            """, (name, email, phone, message_body))
+    if not name or not email or not message:
+        return jsonify({"success": False, "error": "Missing required fields"}), 400
 
-            conn.commit()
-            cursor.close()
-            conn.close()
+    conn = get_db_connection()
+    if conn is None:
+        return jsonify({"success": False, "error": "DB connection failed"}), 500
 
-        except Error as e:
-            return jsonify({
-                "status": "error",
-                "message": f"MySQL Error: {str(e)}"
-            }), 500
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO contacts (name, email, phone, message)
+            VALUES (%s, %s, %s, %s)
+        """, (name, email, phone, message))
 
-        # --------------------------------------------------------
-        # SEND EMAIL
-        # --------------------------------------------------------
-        try:
-            msg = EmailMessage()
-            msg["Subject"] = f"New Portfolio Contact: {name}"
-            msg["From"] = GMAIL_USERNAME
-            msg["To"] = GMAIL_USERNAME
-            msg.set_content(
-                f"Name: {name}\n"
-                f"Email: {email}\n"
-                f"Phone: {phone}\n\n"
-                f"Message:\n{message_body}"
-            )
+        conn.commit()
+        cursor.close()
+        conn.close()
 
-            with smtplib.SMTP("smtp.gmail.com", 587) as server:
-                server.starttls()
-                server.login(GMAIL_USERNAME, GMAIL_APP_PASSWORD)
-                server.send_message(msg)
-
-        except Exception as e:
-            return jsonify({
-                "status": "error",
-                "message": f"Email Error: {str(e)}"
-            }), 500
-
-        return jsonify({"status": "success", "message": "Message sent successfully!"})
+        return jsonify({"success": True, "message": "Message saved successfully"}), 200
 
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        print("❌ ERROR inserting:", e)
+        return jsonify({"success": False, "error": "Internal Server Error"}), 500
 
 
-# --------------------------------------------------------
-# Local run (Railway uses Gunicorn)
-# --------------------------------------------------------
+# -------------------------------
+# ✅ ROOT TEST ROUTE
+# -------------------------------
+@app.route("/")
+def home():
+    return jsonify({"status": "Backend is running!"})
+
+
+# -------------------------------
+# ✅ MAIN
+# -------------------------------
 if __name__ == "__main__":
-    app.run(port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000)
