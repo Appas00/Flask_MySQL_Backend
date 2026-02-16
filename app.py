@@ -82,7 +82,6 @@ CORS(app, origins=[
     "https://appas00.github.io/portfolio"
 ])
 
-
 @app.after_request
 def after_request(response):
     response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Accept')
