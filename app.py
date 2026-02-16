@@ -8,7 +8,8 @@ from email.message import EmailMessage
 from dotenv import load_dotenv
 import logging
 import time
-from datetime import datetime
+from datetime datetime
+import urllib.parse
 
 # -----------------------------
 # Load environment variables
@@ -18,31 +19,55 @@ load_dotenv()
 # -----------------------------
 # Configure logging
 # -----------------------------
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # -----------------------------
-# Database configuration - Support both Railway and Clever-Cloud
+# Database configuration - Using Railway MySQL Reference
 # -----------------------------
-# Railway provides MySQL variables with different names
-db_config = {
-    'host': os.getenv('DB_HOST') or os.getenv('MYSQLHOST') or 'bmqdodlsvrs4eiohpyuj-mysql.services.clever-cloud.com',
-    'database': os.getenv('DB_NAME') or os.getenv('MYSQLDATABASE') or 'bmqdodlsvrs4eiohpyuj',
-    'user': os.getenv('DB_USER') or os.getenv('MYSQLUSER') or 'u3n1wy3bh5dbph7h',
-    'password': os.getenv('DB_PASS') or os.getenv('MYSQLPASSWORD') or '7hsxNRqBlgV9IalgyIgw',
-    'port': int(os.getenv('DB_PORT') or os.getenv('MYSQLPORT') or 3306),
-    'connection_timeout': 30,
-    'use_pure': True
-}
+def get_db_config():
+    """Parse database config from Railway MySQL URL"""
+    
+    # Railway provides MYSQL_URL in format: mysql://user:password@host:port/database
+    database_url = os.getenv('DATABASE_URL') or os.getenv('MYSQL_URL')
+    
+    if database_url and database_url.startswith('mysql://'):
+        # Parse MySQL URL
+        parsed = urllib.parse.urlparse(database_url)
+        
+        db_config = {
+            'host': parsed.hostname,
+            'user': parsed.username,
+            'password': parsed.password,
+            'database': parsed.path[1:],  # Remove leading '/'
+            'port': parsed.port or 3306,
+            'connection_timeout': 30,
+            'use_pure': True
+        }
+        logger.info(f"✅ Using Railway MySQL: {db_config['host']}/{db_config['database']}")
+        return db_config
+    else:
+        # Fallback to individual variables (for local development)
+        db_config = {
+            'host': os.getenv('DB_HOST', 'localhost'),
+            'database': os.getenv('DB_NAME', 'railway'),
+            'user': os.getenv('DB_USER', 'root'),
+            'password': os.getenv('DB_PASS', ''),
+            'port': int(os.getenv('DB_PORT', 3306)),
+            'connection_timeout': 30,
+            'use_pure': True
+        }
+        logger.info(f"✅ Using local/individual DB config: {db_config['host']}/{db_config['database']}")
+        return db_config
+
+# Get database config
+db_config = get_db_config()
 
 # -----------------------------
 # Gmail credentials
 # -----------------------------
-GMAIL_USERNAME = os.getenv("GMAIL_USERNAME", "appasm321@gmail.com")
-GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "byuabzoldtygwznm")
+GMAIL_USERNAME = os.getenv("GMAIL_USERNAME")
+GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 
 # -----------------------------
 # Initialize Flask app
@@ -50,52 +75,38 @@ GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "byuabzoldtygwznm")
 app = Flask(__name__)
 
 # -----------------------------
-# Comprehensive CORS configuration
+# CORS configuration
 # -----------------------------
-CORS(app, resources={
-    r"/*": {
-        "origins": [
-            "https://appas00.github.io",
-            "http://localhost:3000",
-            "http://127.0.0.1:3000",
-            "https://flask-mysql-backend.up.railway.app"
-        ],
-        "methods": ["GET", "POST", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Accept"],
-        "supports_credentials": True
-    }
-})
+CORS(app, origins=[
+    "https://appas00.github.io",
+    "https://appas00.github.io/portfolio"
+])
+
 
 @app.after_request
 def after_request(response):
-    response.headers.add('Access-Control-Allow-Origin', 'https://appas00.github.io')
     response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Accept')
     response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
-    response.headers.add('Access-Control-Allow-Credentials', 'true')
     return response
 
 # -----------------------------
-# Database connection helper with better error handling
+# Database connection helper
 # -----------------------------
 def get_db_connection():
     """Get database connection with retry logic"""
     retries = 3
-    last_error = None
-    
     for i in range(retries):
         try:
-            logger.info(f"Connecting to MySQL ({i+1}/{retries}) - Host: {db_config['host']}, DB: {db_config['database']}")
+            logger.info(f"Connecting to MySQL ({i+1}/{retries})...")
             conn = mysql.connector.connect(**db_config)
             if conn.is_connected():
                 logger.info("✅ Connected to MySQL successfully!")
                 return conn
         except Error as e:
-            last_error = e
             logger.error(f"❌ Connection attempt {i+1} failed: {str(e)}")
-            if i < retries - 1:
-                time.sleep(2)
-    
-    logger.error(f"❌ All connection attempts failed: {last_error}")
+            if i == retries - 1:
+                raise e
+            time.sleep(2)
     return None
 
 # -----------------------------
@@ -114,13 +125,6 @@ def init_database():
             
             if table_exists:
                 logger.info("✅ Contacts table exists")
-                
-                # Show table structure
-                cursor.execute("DESCRIBE contacts")
-                columns = cursor.fetchall()
-                logger.info("Table structure:")
-                for col in columns:
-                    logger.info(f"  - {col[0]} {col[1]}")
                 
                 # Count records
                 cursor.execute("SELECT COUNT(*) FROM contacts")
@@ -157,8 +161,7 @@ def home():
     return jsonify({
         "status": "ok",
         "message": "Backend is running on Railway with MySQL!",
-        "timestamp": datetime.now().isoformat(),
-        "database": db_config['host']
+        "timestamp": datetime.now().isoformat()
     })
 
 @app.get("/health")
@@ -238,8 +241,7 @@ def test_db():
             "message": "✅ Connected to MySQL",
             "database_info": {
                 "host": db_config['host'],
-                "database": db_config['database'],
-                "user": db_config['user']
+                "database": db_config['database']
             },
             "tables": table_list,
             "recent_contacts": contacts,
@@ -260,7 +262,6 @@ def contact():
     try:
         data = request.get_json()
         if not data:
-            logger.error("No JSON data received")
             return jsonify({
                 "status": "error",
                 "message": "No data provided"
@@ -290,7 +291,7 @@ def contact():
             if not conn:
                 return jsonify({
                     "status": "error",
-                    "message": "Database connection failed - please try again later"
+                    "message": "Database connection failed"
                 }), 503
 
             cursor = conn.cursor()
@@ -315,7 +316,7 @@ def contact():
                 "message": "Database error occurred. Please try again."
             }), 500
 
-        # Send email notification (optional - don't fail if email doesn't work)
+        # Send email notification
         email_sent = False
         if GMAIL_USERNAME and GMAIL_APP_PASSWORD:
             try:
@@ -343,7 +344,6 @@ def contact():
                 logger.info(f"✅ Email notification sent")
             except Exception as e:
                 logger.error(f"Email Error: {str(e)}")
-                # Don't fail the request if email fails
 
         return jsonify({
             "status": "success",
