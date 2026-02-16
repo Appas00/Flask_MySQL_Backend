@@ -7,16 +7,21 @@ from email.message import EmailMessage
 from dotenv import load_dotenv
 import os
 
-# Load .env
+# Load .env (Railway uses variables directly)
 load_dotenv()
+
+# Import database configuration
 from db_config import db_config
 
 app = Flask(__name__)
 
-# Allow frontend (React) - You can add Clever Cloud domain later
-CORS(app, origins=["http://localhost:5174"])
+# Allow your live frontend on GitHub Pages
+CORS(app, origins=[
+    "https://appas00.github.io",
+    "https://appas00.github.io/portfolio"
+])
 
-# Gmail Credentials
+# Gmail Credentials (set these in Railway variables)
 GMAIL_USERNAME = os.getenv("GMAIL_USERNAME")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 
@@ -44,7 +49,7 @@ def contact():
             return jsonify({"status": "error", "message": "Name, Email, and Message are required"}), 400
 
         # --------------------------------------------------------
-        # Save to MySQL (Clever Cloud)
+        # Save to MySQL (Railway or Clever Cloud)
         # --------------------------------------------------------
         try:
             conn = mysql.connector.connect(**db_config)
@@ -88,14 +93,14 @@ def contact():
                 "message": f"Email Error: {str(e)}"
             }), 500
 
-        return jsonify({"status": "success", "message": "Message sent!"})
+        return jsonify({"status": "success", "message": "Message sent successfully!"})
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
 # --------------------------------------------------------
-# Run Flask
+# Run Flask (Railway will use Gunicorn)
 # --------------------------------------------------------
 if __name__ == "__main__":
     app.run(port=5000, debug=True)
