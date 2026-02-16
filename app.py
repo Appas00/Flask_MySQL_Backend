@@ -21,6 +21,7 @@ CORS(app, origins=[
     "https://appas00.github.io/portfolio"
 ])
 
+
 # Gmail credentials (must be set in Railway Variables)
 GMAIL_USERNAME = os.getenv("GMAIL_USERNAME")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
