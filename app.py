@@ -7,49 +7,54 @@ from email.message import EmailMessage
 from dotenv import load_dotenv
 import os
 
-# Load .env (Railway uses variables directly)
+# Load local .env (Railway injects variables automatically)
 load_dotenv()
 
-# Import database configuration
+# Import DB config
 from db_config import db_config
 
 app = Flask(__name__)
 
-# Allow your live frontend on GitHub Pages
+# Allow GitHub Pages frontend
 CORS(app, origins=[
     "https://appas00.github.io",
     "https://appas00.github.io/portfolio"
 ])
 
-# Gmail Credentials (set these in Railway variables)
+# Gmail credentials (must be set in Railway Variables)
 GMAIL_USERNAME = os.getenv("GMAIL_USERNAME")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 
 # --------------------------------------------------------
-# Test Route
+# Root Route
 # --------------------------------------------------------
 @app.get("/")
 def home():
-    return jsonify({"status": "ok", "message": "Backend is running!"})
+    return jsonify({"status": "ok", "message": "Backend is running on Railway!"})
+
 
 # --------------------------------------------------------
-# Contact Form Route
+# Contact Route
 # --------------------------------------------------------
 @app.post("/contact")
 def contact():
     try:
-        data = request.json
+        data = request.json or {}  # Prevent crash if body is empty
 
         name = data.get("name")
         email = data.get("email")
         phone = data.get("phone")
         message_body = data.get("message")
 
+        # Validate fields
         if not name or not email or not message_body:
-            return jsonify({"status": "error", "message": "Name, Email, and Message are required"}), 400
+            return jsonify({
+                "status": "error",
+                "message": "Name, Email and Message are required"
+            }), 400
 
         # --------------------------------------------------------
-        # Save to MySQL (Railway or Clever Cloud)
+        # SAVE TO MYSQL (Railway)
         # --------------------------------------------------------
         try:
             conn = mysql.connector.connect(**db_config)
@@ -71,7 +76,7 @@ def contact():
             }), 500
 
         # --------------------------------------------------------
-        # Send Gmail Email
+        # SEND EMAIL
         # --------------------------------------------------------
         try:
             msg = EmailMessage()
@@ -100,7 +105,7 @@ def contact():
 
 
 # --------------------------------------------------------
-# Run Flask (Railway will use Gunicorn)
+# Local Debug Mode (Railway uses Gunicorn)
 # --------------------------------------------------------
 if __name__ == "__main__":
     app.run(port=5000, debug=True)
