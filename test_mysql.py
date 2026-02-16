@@ -1,9 +1,9 @@
-import mysql.connector
 from db_config import db_config
+import mysql.connector
 
 try:
     conn = mysql.connector.connect(**db_config)
-    print("✅ Connected to Clever-Cloud MySQL!")
+    print("✅ Connection successful")
     conn.close()
 except Exception as e:
     print("❌ Connection failed:", e)
