@@ -1,16 +1,16 @@
 import os
 from dotenv import load_dotenv
 
-# Load .env locally (Railway uses real environment variables)
+# Load .env file locally
 load_dotenv()
 
 db_config = {
-    "host": os.getenv("MYSQLHOST", "mysql.railway.internal"),
-    "port": int(os.getenv("MYSQLPORT", 3306)),
-    "user": os.getenv("MYSQLUSER", "root"),
-    "password": os.getenv("MYSQLPASSWORD", ""),
-    "database": os.getenv("MYSQLDATABASE", "railway"),
+    "host": os.getenv("DB_HOST"),
+    "port": int(os.getenv("DB_PORT", 3306)),
+    "user": os.getenv("DB_USER"),
+    "password": os.getenv("DB_PASS"),
+    "database": os.getenv("DB_NAME")
 }
 
-# Debug print to verify
+# Debug print
 print("DB Config Loaded:", db_config)
